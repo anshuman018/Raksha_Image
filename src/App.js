@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import ImageEncryptor from './components/ImageEncryptor';
 import ImageDecryptor from './components/ImageDecryptor';
+import SecurityInfo from './components/SecurityInfo';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import { initAnalytics, trackEvent, isEnabled } from './utils/analytics';
 import logo from './logo.svg'; // Make sure your new logo has the same filename or update accordingly
@@ -35,7 +36,8 @@ function App() {
           <div className="logo">🔒</div>
           <h1>Raksha</h1>
         </div>
-        <p className="app-tagline">Secure Image Encryption by Anshuman Singh</p>
+        <p className="app-tagline">Secure Image Encryption</p>
+        <div className="beta-badge">BETA</div>
         
         <div className="tabs">
           <button 
@@ -50,11 +52,19 @@ function App() {
           >
             <span className="tab-icon">🔓</span> Decrypt
           </button>
+          <button 
+            className={activeTab === 'security' ? 'active' : ''} 
+            onClick={() => handleTabChange('security')}
+          >
+            <span className="tab-icon">🛡️</span> Security
+          </button>
         </div>
       </header>
       
       <main>
-        {activeTab === 'encrypt' ? <ImageEncryptor /> : <ImageDecryptor />}
+        {activeTab === 'encrypt' && <ImageEncryptor />}
+        {activeTab === 'decrypt' && <ImageDecryptor />}
+        {activeTab === 'security' && <SecurityInfo />}
       </main>
       
       <footer className="app-footer">
@@ -70,6 +80,7 @@ function App() {
             Analytics: {isEnabled() ? 'On' : 'Off'}
           </span>
         </div>
+        <p className="privacy-statement">Your data never leaves your device. Free and ad-free.</p>
         <p className="copyright">© {currentYear} - All rights reserved</p>
       </footer>
       

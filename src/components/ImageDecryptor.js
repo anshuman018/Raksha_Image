@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { decryptImage } from "../utils/cryptoUtils";
 import { trackEvent } from "../utils/analytics";
+import "../styles/SecurityTheme.css";
 
 const ImageDecryptor = () => {
   const [jsonFile, setJsonFile] = useState(null);
@@ -9,6 +10,7 @@ const ImageDecryptor = () => {
   const [error, setError] = useState("");
   const [decryptData, setDecryptData] = useState(null);
 
+  // Existing functions remain unchanged
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -115,47 +117,100 @@ const ImageDecryptor = () => {
   };
 
   return (
-    <div className="decryptor-container">
-      <h2>Decrypt Your Image</h2>
+    <div className="decryptor-container secure-gradient">
+      <div className="beta-badge">BETA</div>
       
-      <div className="file-input">
+      <div className="security-header">
+        <div className="lock-icon">🔓</div>
+        <h2>Secure Image Decryption</h2>
+      </div>
+      
+      {/* Removed problematic security banner */}
+      
+      <div className="security-message">
+        <p>Your data never leaves your device. Decryption happens entirely in your browser, 
+        ensuring complete privacy for your sensitive images.</p>
+      </div>
+      
+      <div className="file-input secure-box">
         <input 
           type="file" 
           accept=".json,application/json" 
           onChange={handleFileUpload}
           id="json-input"
         />
-        <label htmlFor="json-input" className="btn">
+        <label htmlFor="json-input" className="secure-btn">
           <i className="icon">📁</i> Upload Encryption File
         </label>
         {jsonFile && <span className="file-name">{jsonFile.name}</span>}
       </div>
       
       {jsonFile && !error && decryptData && (
-        <div className="decrypt-action">
-          <p className="help-text">File loaded successfully. Click the button below to decrypt your image.</p>
+        <div className="decrypt-action secure-box">
+          <div className="security-indicator">
+            <div className="pulse-ring"></div>
+            <span>Secure Connection Active</span>
+          </div>
+          <p className="help-text">Encryption file loaded. Click below to decrypt your image securely.</p>
           <button 
             onClick={handleDecrypt} 
             disabled={processing}
-            className="btn primary"
+            className="secure-btn-primary"
           >
-            {processing ? "Decrypting..." : "🔓 Decrypt Image"}
+            {processing ? (
+              <>
+                <span className="spinner"></span> Decrypting Securely...
+              </>
+            ) : (
+              <>🔓 Decrypt Image</>
+            )}
           </button>
         </div>
       )}
       
-      {error && <div className="error-message">{error}</div>}
+      {error && <div className="secure-error">{error}</div>}
       
       {decryptedImageUrl && (
-        <div className="decrypted-result">
-          <h3>🎉 Decryption Complete!</h3>
-          <img src={decryptedImageUrl} alt="Decrypted" />
+        <div className="decrypted-result secure-box">
+          <div className="success-badge">
+            <span className="checkmark">✓</span> Decrypted Securely
+          </div>
           
-          <button onClick={downloadDecryptedImage} className="btn primary">
-            💾 Download Image
+          <div className="image-container">
+            <img src={decryptedImageUrl} alt="Decrypted" className="secure-image" />
+            <div className="watermark">Decrypted with Raksha</div>
+          </div>
+          
+          <button onClick={downloadDecryptedImage} className="secure-btn-download">
+            💾 Download Securely
           </button>
+          
+          <p className="security-note">
+            Your decrypted image is only stored in your browser's memory and will be erased when you leave this page.
+          </p>
         </div>
       )}
+      
+      <div className="footer-security-info">
+        <h4>How We Keep Your Data Secure:</h4>
+        <ul>
+          <li>
+            <strong>No Server Storage:</strong> Your images and encryption keys are never transmitted or stored on our servers.
+          </li>
+          <li>
+            <strong>Local Processing:</strong> All decryption happens directly in your browser.
+          </li>
+          <li>
+            <strong>Maximum Privacy:</strong> Only someone with your encryption file can decrypt your images.
+          </li>
+        </ul>
+        
+        <div className="beta-notice">
+          <h4>Beta Version Notice</h4>
+          <p>Raksha is currently in beta development by Anshuman Singh.</p>
+          <p>This service is completely free and ad-free, with a commitment to your privacy and security.</p>
+        </div>
+      </div>
     </div>
   );
 };

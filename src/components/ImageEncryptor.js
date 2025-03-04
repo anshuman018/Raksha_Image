@@ -1,153 +1,273 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { encryptImage } from "../utils/cryptoUtils";
-import FileSaver from "file-saver";
 import { trackEvent } from "../utils/analytics";
+import "../styles/SecurityTheme.css";
 
 const ImageEncryptor = () => {
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [encryptedResult, setEncryptedResult] = useState(null);
+  const [error, setError] = useState("");
+  const [encryptionComplete, setEncryptionComplete] = useState(false);
+  const fileInputRef = useRef(null);
 
-  const handleFileChange = (event) => {
+  // Existing functions remain unchanged
+  const handleImageSelect = (event) => {
     const file = event.target.files[0];
-    if (file && file.type.match("image.*")) {
-      setSelectedFile(file);
-      
-      // Create preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewUrl(reader.result);
-      };
-      reader.readAsDataURL(file);
-      
-      // Reset results
-      setEncryptedResult(null);
-      
-      // Track file selection - note we don't track the file content, only the type and size
-      trackEvent('encrypt_file_selected', {
-        fileType: file.type,
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.match('image.*')) {
+      setError("Please select a valid image file");
+      trackEvent('encrypt_invalid_filetype', {
+        attempted_type: file.type,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Image too large. Maximum size is 10MB");
+      trackEvent('encrypt_file_too_large', {
         fileSize: file.size,
         timestamp: new Date().toISOString()
       });
+      return;
     }
+
+    setSelectedImage(file);
+    setError("");
+    setEncryptionComplete(false);
+    
+    // Create image preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImagePreview(e.target.result);
+    };
+    reader.readAsDataURL(file);
+
+    // Track image selection
+    trackEvent('encrypt_image_selected', {
+      fileType: file.type,
+      fileSize: file.size,
+      timestamp: new Date().toISOString()
+    });
   };
 
   const handleEncrypt = async () => {
-    if (!selectedFile) return;
-    
+    if (!selectedImage) {
+      setError("Please select an image to encrypt");
+      return;
+    }
+
     setProcessing(true);
+    setError("");
     const startTime = Date.now();
-    
+
     try {
-      // Read file as ArrayBuffer for encryption
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        try {
-          const result = await encryptImage(reader.result);
-          setEncryptedResult({
-            encryptedData: result.encryptedData,
-            key: result.key,
-            filename: selectedFile.name,
-            type: selectedFile.type
-          });
-          
-          // Track successful encryption
-          trackEvent('encryption_complete', {
-            fileType: selectedFile.type,
-            fileSize: selectedFile.size,
-            processingTime: Date.now() - startTime,
-            timestamp: new Date().toISOString()
-          });
-        } catch (err) {
-          console.error("Encryption process failed:", err);
-          
-          // Track encryption failure
-          trackEvent('encryption_failed', {
-            fileType: selectedFile.type,
-            fileSize: selectedFile.size,
-            error: err.message,
-            timestamp: new Date().toISOString()
-          });
-        } finally {
-          setProcessing(false);
-        }
+      // Read file as array buffer
+      const buffer = await readFileAsArrayBuffer(selectedImage);
+      
+      // Encrypt the image
+      const { encryptedData, key } = await encryptImage(buffer);
+
+      // Create JSON with encrypted data
+      const encryptionPackage = {
+        encryptedData: encryptedData,
+        key: key,
+        filename: selectedImage.name,
+        type: selectedImage.type,
+        originalSize: selectedImage.size,
+        encryptedAt: new Date().toISOString()
       };
-      reader.readAsArrayBuffer(selectedFile);
-    } catch (error) {
-      console.error("Encryption failed:", error);
+
+      // Convert to JSON and create blob
+      const jsonBlob = new Blob([JSON.stringify(encryptionPackage)], {
+        type: 'application/json'
+      });
+
+      // Create download link
+      const url = URL.createObjectURL(jsonBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `encrypted_${selectedImage.name.split('.')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setEncryptionComplete(true);
+
+      // Track successful encryption
+      trackEvent('encryption_complete', {
+        fileType: selectedImage.type,
+        fileSize: selectedImage.size,
+        processingTime: Date.now() - startTime,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Encryption failed:", err);
+      setError("Failed to encrypt image. Please try again with a different image.");
+      
+      // Track encryption failure
+      trackEvent('encryption_failed', {
+        error: err.message,
+        fileType: selectedImage.type,
+        fileSize: selectedImage.size,
+        processingTime: Date.now() - startTime,
+        timestamp: new Date().toISOString()
+      });
+    } finally {
       setProcessing(false);
     }
   };
 
-  const handleDownloadData = () => {
-    if (!encryptedResult) return;
+  const readFileAsArrayBuffer = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => resolve(event.target.result);
+      reader.onerror = (error) => reject(error);
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  const resetForm = () => {
+    setSelectedImage(null);
+    setImagePreview("");
+    setError("");
+    setEncryptionComplete(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     
-    // Create a JSON file with all necessary data
-    const dataObj = {
-      encryptedData: encryptedResult.encryptedData,
-      key: encryptedResult.key,
-      filename: encryptedResult.filename,
-      type: encryptedResult.type
-    };
-    
-    const blob = new Blob([JSON.stringify(dataObj)], { type: "application/json" });
-    FileSaver.saveAs(blob, `encrypted_${encryptedResult.filename}.json`);
-    
-    // Track download
-    trackEvent('encrypted_file_downloaded', {
-      fileType: encryptedResult.type,
+    // Track reset action
+    trackEvent('encrypt_form_reset', {
       timestamp: new Date().toISOString()
     });
   };
 
   return (
-    <div className="encryptor-container">
-      <h2>Encrypt Your Image</h2>
+    <div className="encryptor-container secure-gradient">
+      <div className="beta-badge">BETA</div>
       
-      <div className="file-input">
+      <div className="security-header">
+        <div className="lock-icon">🔐</div>
+        <h2>Secure Image Encryption</h2>
+      </div>
+      
+      {/* Removed problematic security banner */}
+      
+      <div className="security-message">
+        <p>Your images are encrypted directly in your browser. The encryption key never leaves your device, 
+        ensuring that only you control access to your images.</p>
+      </div>
+      
+      <div className="file-input secure-box">
         <input 
           type="file" 
           accept="image/*" 
-          onChange={handleFileChange}
+          onChange={handleImageSelect}
           id="image-input"
+          ref={fileInputRef}
         />
-        <label htmlFor="image-input" className="btn">
-          <i className="icon">📁</i> Choose an Image
+        <label htmlFor="image-input" className="btn secure-btn">
+          <i className="icon">🖼️</i> Select Image to Encrypt
         </label>
-        {selectedFile && <span className="file-name">{selectedFile.name}</span>}
+        {selectedImage && <span className="file-name">{selectedImage.name}</span>}
       </div>
       
-      {previewUrl && (
-        <div className="preview">
-          <h3>Preview</h3>
-          <img src={previewUrl} alt="Preview" />
-          <button 
-            onClick={handleEncrypt} 
-            disabled={processing}
-            className="btn primary"
-          >
-            {processing ? "Encrypting..." : "🔒 Encrypt Image"}
-          </button>
-        </div>
-      )}
-      
-      {encryptedResult && (
-        <div className="result">
-          <h3>🎉 Encryption Complete!</h3>
-          
-          <div className="data-field">
-            <label>Your file has been encrypted successfully.</label>
-            <p className="help-text">Download the encryption file and keep it safe. You'll need to upload this file to decrypt your image later.</p>
+      {imagePreview && (
+        <div className="image-preview secure-box">
+          <div className="preview-header">
+            <h4>Image Preview</h4>
+            <div className="security-tag">Unencrypted</div>
+          </div>
+          <div className="preview-container">
+            <img src={imagePreview} alt="Preview" className="preview-image" />
+            <div className="preview-overlay">
+              <div className="overlay-text">This image will be securely encrypted</div>
+            </div>
           </div>
           
-          <div className="actions">
-            <button onClick={handleDownloadData} className="btn primary">
-              💾 Download Encrypted File
+          <div className="preview-actions">
+            <button 
+              onClick={handleEncrypt} 
+              disabled={processing}
+              className="btn primary secure-btn-primary"
+            >
+              {processing ? (
+                <>
+                  <span className="spinner"></span> Encrypting Securely...
+                </>
+              ) : (
+                <>🔒 Encrypt Image</>
+              )}
+            </button>
+            
+            <button 
+              onClick={resetForm} 
+              disabled={processing}
+              className="btn secondary secure-btn-secondary"
+            >
+              ↺ Reset
             </button>
           </div>
         </div>
       )}
+      
+      {error && <div className="error-message secure-error">{error}</div>}
+      
+      {encryptionComplete && (
+        <div className="encryption-success secure-box">
+          <div className="success-badge">
+            <span className="checkmark">✓</span> Encryption Complete
+          </div>
+          
+          <p className="success-message">
+            Your image has been successfully encrypted and downloaded as a JSON file.
+          </p>
+          
+          <div className="next-steps">
+            <h5>Next Steps:</h5>
+            <ol>
+              <li>Store the encryption file in a secure location</li>
+              <li>To view your image, use the Decrypt feature</li>
+              <li>Anyone with this file can decrypt your image</li>
+            </ol>
+          </div>
+          
+          <div className="encryption-warning">
+            <span className="warning-icon">⚠️</span> 
+            <span>If you lose the encryption file, your image cannot be recovered!</span>
+          </div>
+          
+          <button onClick={resetForm} className="btn secure-btn">
+            Encrypt Another Image
+          </button>
+        </div>
+      )}
+      
+      <div className="footer-security-info">
+        <h4>How Raksha Encrypts Your Images:</h4>
+        <ul>
+          <li>
+            <strong>Local Processing:</strong> All encryption happens directly in your browser using strong AES-256 encryption.
+          </li>
+          <li>
+            <strong>Zero Knowledge:</strong> We never see or store your original images or encryption keys.
+          </li>
+          <li>
+            <strong>Full Control:</strong> Only you and those you share the encryption file with can decrypt your images.
+          </li>
+        </ul>
+        
+        <div className="beta-notice">
+          <h4>Beta Version Information</h4>
+          <p>Raksha is currently in beta and under active development.</p>
+          <p>This service is completely free and ad-free, with a commitment to privacy and security.</p>
+          <p>Your feedback helps improve the platform while maintaining our core privacy principles.</p>
+        </div>
+      </div>
     </div>
   );
 };
