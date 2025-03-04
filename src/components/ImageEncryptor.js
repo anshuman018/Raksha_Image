@@ -1,14 +1,13 @@
 import React, { useState } from "react";
 import { encryptImage } from "../utils/cryptoUtils";
-import { QRCodeSVG } from "qrcode.react";
 import FileSaver from "file-saver";
+import { trackEvent } from "../utils/analytics";
 
 const ImageEncryptor = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [processing, setProcessing] = useState(false);
   const [encryptedResult, setEncryptedResult] = useState(null);
-  const [showQr, setShowQr] = useState(false);
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -24,6 +23,13 @@ const ImageEncryptor = () => {
       
       // Reset results
       setEncryptedResult(null);
+      
+      // Track file selection - note we don't track the file content, only the type and size
+      trackEvent('encrypt_file_selected', {
+        fileType: file.type,
+        fileSize: file.size,
+        timestamp: new Date().toISOString()
+      });
     }
   };
 
@@ -31,6 +37,8 @@ const ImageEncryptor = () => {
     if (!selectedFile) return;
     
     setProcessing(true);
+    const startTime = Date.now();
+    
     try {
       // Read file as ArrayBuffer for encryption
       const reader = new FileReader();
@@ -43,8 +51,24 @@ const ImageEncryptor = () => {
             filename: selectedFile.name,
             type: selectedFile.type
           });
+          
+          // Track successful encryption
+          trackEvent('encryption_complete', {
+            fileType: selectedFile.type,
+            fileSize: selectedFile.size,
+            processingTime: Date.now() - startTime,
+            timestamp: new Date().toISOString()
+          });
         } catch (err) {
           console.error("Encryption process failed:", err);
+          
+          // Track encryption failure
+          trackEvent('encryption_failed', {
+            fileType: selectedFile.type,
+            fileSize: selectedFile.size,
+            error: err.message,
+            timestamp: new Date().toISOString()
+          });
         } finally {
           setProcessing(false);
         }
@@ -54,11 +78,6 @@ const ImageEncryptor = () => {
       console.error("Encryption failed:", error);
       setProcessing(false);
     }
-  };
-
-  const handleCopyData = (text) => {
-    navigator.clipboard.writeText(text);
-    alert("Copied to clipboard!");
   };
 
   const handleDownloadData = () => {
@@ -74,15 +93,11 @@ const ImageEncryptor = () => {
     
     const blob = new Blob([JSON.stringify(dataObj)], { type: "application/json" });
     FileSaver.saveAs(blob, `encrypted_${encryptedResult.filename}.json`);
-  };
-
-  const getQrCodeData = () => {
-    if (!encryptedResult) return "";
-    return JSON.stringify({
-      encryptedData: encryptedResult.encryptedData.substring(0, 20) + "...",
-      key: encryptedResult.key,
-      filename: encryptedResult.filename,
-      type: encryptedResult.type
+    
+    // Track download
+    trackEvent('encrypted_file_downloaded', {
+      fileType: encryptedResult.type,
+      timestamp: new Date().toISOString()
     });
   };
 
@@ -98,8 +113,9 @@ const ImageEncryptor = () => {
           id="image-input"
         />
         <label htmlFor="image-input" className="btn">
-          Choose an Image
+          <i className="icon">📁</i> Choose an Image
         </label>
+        {selectedFile && <span className="file-name">{selectedFile.name}</span>}
       </div>
       
       {previewUrl && (
@@ -111,50 +127,25 @@ const ImageEncryptor = () => {
             disabled={processing}
             className="btn primary"
           >
-            {processing ? "Encrypting..." : "Encrypt Image"}
+            {processing ? "Encrypting..." : "🔒 Encrypt Image"}
           </button>
         </div>
       )}
       
       {encryptedResult && (
         <div className="result">
-          <h3>Encryption Complete!</h3>
+          <h3>🎉 Encryption Complete!</h3>
           
           <div className="data-field">
-            <label>Encryption Key (KEEP THIS SECURE!):</label>
-            <div className="data-display">
-              <pre>{encryptedResult.key}</pre>
-              <button onClick={() => handleCopyData(encryptedResult.key)} className="btn small">
-                Copy
-              </button>
-            </div>
-          </div>
-          
-          <div className="data-field">
-            <label>Encrypted Data (excerpt):</label>
-            <div className="data-display">
-              <pre>{encryptedResult.encryptedData.substring(0, 50) + "..."}</pre>
-              <button onClick={() => handleCopyData(encryptedResult.encryptedData)} className="btn small">
-                Copy All
-              </button>
-            </div>
+            <label>Your file has been encrypted successfully.</label>
+            <p className="help-text">Download the encryption file and keep it safe. You'll need to upload this file to decrypt your image later.</p>
           </div>
           
           <div className="actions">
-            <button onClick={handleDownloadData} className="btn">
-              Download Encryption Data
-            </button>
-            <button onClick={() => setShowQr(!showQr)} className="btn">
-              {showQr ? "Hide QR Code" : "Generate QR Code"}
+            <button onClick={handleDownloadData} className="btn primary">
+              💾 Download Encrypted File
             </button>
           </div>
-          
-          {showQr && (
-            <div className="qr-container">
-              <p>Note: QR codes have size limitations and may not work for large images</p>
-              <QRCodeSVG value={getQrCodeData()} size={200} />
-            </div>
-          )}
         </div>
       )}
     </div>
