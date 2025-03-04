@@ -4,6 +4,7 @@ import ImageEncryptor from './components/ImageEncryptor';
 import ImageDecryptor from './components/ImageDecryptor';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import { initAnalytics, trackEvent, isEnabled } from './utils/analytics';
+import logo from './logo.svg'; // Make sure your new logo has the same filename or update accordingly
 
 function App() {
   const [activeTab, setActiveTab] = useState('encrypt');
